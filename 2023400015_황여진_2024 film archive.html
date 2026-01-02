@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>2023400015_황여진_2024 film archive</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Pretendard, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif;
+    background: #111;
+    color: #fff;
+  }
+  .center { display:flex; justify-content:center; align-items:center; }
+  #intro { height:100vh; cursor:pointer; font-size:32px; letter-spacing:2px; user-select:none; }
+
+  #categories { display:none; height:100vh; flex-direction:column; gap:18px; font-size:20px; padding:24px; }
+  .category {
+    position: relative;
+    cursor: pointer;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 180px;
+  }
+  .category.has-sub::after {
+    content:'';
+    position:absolute;
+    top:0;
+    right:-120px;
+    width:120px;
+    height:100%;
+  }
+  .category.has-sub:hover .subcategory,
+  .subcategory:hover { display:flex; }
+
+  .subcategory {
+    position:absolute;
+    left:100%;
+    margin-left:14px;
+    top:50%;
+    transform:translateY(-50%);
+    display:none;
+    flex-direction:column;
+    gap:10px;
+    font-size:16px;
+    background:rgba(0,0,0,0.45);
+    border:1px solid rgba(255,255,255,0.15);
+    padding:10px;
+    border-radius:10px;
+    min-width:110px;
+    z-index:10;
+  }
+  .subcategory div { padding:6px 8px; border-radius:8px; }
+  .subcategory div:hover { background:rgba(255,255,255,0.08); }
+
+  #gallery { display:none; padding:28px; min-height:100vh; }
+  .top-bar { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+
+  .photo-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; }
+  .photo-grid img {
+    width:100%;
+    height:180px;
+    object-fit:cover;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,0.12);
+    cursor:pointer;
+  }
+
+  #modal {
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.85);
+    justify-content:center;
+    align-items:center;
+    padding:18px;
+  }
+  .modal-content {
+    background:#0f0f0f;
+    border:1px solid rgba(255,255,255,0.15);
+    padding:16px;
+    max-width:min(960px, 92vw);
+    width:100%;
+    border-radius:14px;
+  }
+  .modal-content img {
+    width:100%;
+    max-height:70vh;
+    object-fit:contain;
+    border-radius:10px;
+    margin-bottom:10px;
+  }
+  textarea {
+    width:100%;
+    height:90px;
+    background:#000;
+    color:#fff;
+    border:1px solid #444;
+    padding:10px;
+    border-radius:10px;
+  }
+  button {
+    padding:8px 14px;
+    background:#fff;
+    color:#000;
+    border:none;
+    border-radius:10px;
+    cursor:pointer;
+    font-weight:600;
+  }
+
+  @media (max-width:900px){
+    .photo-grid { grid-template-columns:repeat(2,1fr); }
+    .photo-grid img { height:160px; }
+    #intro { font-size:26px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="intro" class="center">2024 film archive</div>
+
+<div id="categories" class="center">
+  <div class="category" onclick="openGallery('타이페이')">타이페이</div>
+  <div class="category" onclick="openGallery('방콕')">방콕</div>
+  <div class="category" onclick="openGallery('강릉')">강릉</div>
+
+  <div class="category has-sub">
+    제주도
+    <div class="subcategory">
+      <div onclick="openGallery('제주도-5월')">5월</div>
+      <div onclick="openGallery('제주도-12월')">12월</div>
+    </div>
+  </div>
+
+  <div class="category has-sub">
+    후쿠오카
+    <div class="subcategory">
+      <div onclick="openGallery('후쿠오카-8월')">8월</div>
+      <div onclick="openGallery('후쿠오카-11월')">11월</div>
+    </div>
+  </div>
+
+  <div class="category" onclick="openGallery('나고야')">나고야</div>
+  <div class="category" onclick="openGallery('순천')">순천</div>
+</div>
+
+<div id="gallery">
+  <div class="top-bar">
+    <button onclick="goBack()">← back</button>
+    <div id="galleryTitle"></div>
+  </div>
+  <div class="photo-grid" id="photoGrid"></div>
+</div>
+
+<div id="modal" class="center" onclick="if(event.target.id==='modal')closeModal()">
+  <div class="modal-content">
+    <img id="modalImg">
+    <textarea id="comment" readonly></textarea>
+    <button onclick="closeModal()">닫기</button>
+  </div>
+</div>
+
+<script>
+const DB_NAME='filmArchiveDB';
+const STORE='photos';
+
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(DB_NAME,1);
+    r.onupgradeneeded=()=>{
+      const db=r.result;
+      if(!db.objectStoreNames.contains(STORE)){
+        const os=db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});
+        os.createIndex('by_category','category');
+      }
+    };
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej();
+  });
+}
+
+async function getPhotos(cat){
+  const db=await openDB();
+  return new Promise(res=>{
+    const tx=db.transaction(STORE,'readonly');
+    const idx=tx.objectStore(STORE).index('by_category');
+    const rq=idx.getAll(cat);
+    rq.onsuccess=()=>res(rq.result||[]);
+  });
+}
+
+const intro=document.getElementById('intro');
+const cats=document.getElementById('categories');
+const gallery=document.getElementById('gallery');
+const grid=document.getElementById('photoGrid');
+
+intro.onclick=()=>{
+  intro.style.display='none';
+  cats.style.display='flex';
+};
+
+async function openGallery(cat){
+  cats.style.display='none';
+  gallery.style.display='block';
+  document.getElementById('galleryTitle').textContent=cat;
+  grid.innerHTML='';
+  const items=await getPhotos(cat);
+  items.forEach(it=>{
+    const img=document.createElement('img');
+    img.src=URL.createObjectURL(it.blob);
+    img.onclick=()=>{
+      document.getElementById('modalImg').src=img.src;
+      document.getElementById('comment').value=it.comment||'';
+      document.getElementById('modal').style.display='flex';
+    };
+    grid.appendChild(img);
+  });
+}
+
+function goBack(){
+  gallery.style.display='none';
+  cats.style.display='flex';
+}
+
+function closeModal(){
+  document.getElementById('modal').style.display='none';
+}
+</script>
+</body>
+</html>
